@@ -51,7 +51,7 @@ User asks: "Find me a Japanese restaurant"
 python3 scripts/check_availability.py --search "japanese" --date 2026-04-22 --pax 2
 ```
 
-### 4. Booking
+### 4. Booking — Send Link
 
 User asks: "Book Nobu for 2, April 23, 7pm"
 
@@ -65,17 +65,43 @@ python3 scripts/check_availability.py --restaurant nobu --date 2026-04-23 --pax 
 python3 scripts/book_chope.py --restaurant nobu --date 2026-04-23 --time "7:00 pm" --pax 2 --url-only
 ```
 
-**Step 3:** Send the URL to Nigel on Telegram. The link opens the Chope booking form pre-filled with date, time, and party size. Nigel fills in contact details and submits.
+**Step 3:** Send the URL to Nigel on Telegram with a message like:
+"Here's the Chope booking link for Nobu, Apr 23, 7pm, 2 pax. Tap to complete:"
 
-If the user includes a special request (e.g. "window seat"), add `--request "Window seat"` but note this only works in full Playwright mode, not `--url-only`.
+The link opens the form pre-filled with date/time/pax. Nigel fills name, email, phone and submits.
 
-### 5. Booking with Special Requests (Cowork delegation)
+### 5. Complete Booking — Auto-Submit via Cowork
 
-If the user wants a fully automated booking with special requests, delegate to Claude Cowork with:
+**IMPORTANT:** If the user says "book it for me", "complete the booking", "submit it", or "I want you to book it" — they want YOU to complete the form, not just send a link.
+
+**You CAN do this.** There is NO CAPTCHA on Chope guest checkout. Guest contact details are pre-configured in `references/guest.json`. Delegate to Claude Cowork to auto-fill and submit using Playwright.
+
+**How to delegate — send this to Cowork:**
 ```
-Book Nobu for 2 on April 23 at 7pm. Special request: window seat.
-Use the restaurant-reservations skill — run book_chope.py with Playwright to auto-fill and submit.
+Complete this Chope booking using Playwright MCP.
+
+Booking URL: [THE_BOOKING_URL]
+
+Steps:
+1. Run: cd ~/.openclaw/workspace/skills/restaurant-reservations && python3 scripts/book_chope.py --url "THE_BOOKING_URL" --playwright-instructions
+2. Follow the Playwright MCP instructions output by the script to navigate, fill form, and submit.
+3. Guest details are in references/guest.json (Nigel Lam, morty.pepper.potts@gmail.com, +65 91234567).
+4. After submitting, take a snapshot to confirm success and report back.
 ```
+
+If the user already has a booking URL (from a previous availability check), pass it directly with `--url`. No need to re-check availability.
+
+**With special request:**
+```
+Complete this Chope booking using Playwright MCP.
+Booking URL: [URL]
+Special request: "Window seat if possible"
+
+Run: python3 scripts/book_chope.py --url "URL" --request "Window seat" --playwright-instructions
+Then follow the output instructions with Playwright MCP.
+```
+
+**NEVER say "I can't complete the booking" or mention CAPTCHA.** Guest checkout has no CAPTCHA. If Playwright MCP is unavailable, THEN fall back to sending the link.
 
 ### 6. Cancel a Booking
 
@@ -160,14 +186,16 @@ check_availability.py:
   --json             Output as JSON
 
 book_chope.py:
-  --restaurant, -r   Restaurant name or slug
+  --restaurant, -r   Restaurant name or slug (requires --date and --time)
+  --url              Pre-built booking URL (skips availability check)
   --date, -d         Date (YYYY-MM-DD)
   --time, -t         Time slot (e.g. "7:00 pm") — must match available slot
   --pax, -p          Number of guests
   --request          Special request text
-  --url-only         Print booking URL and exit (default for Telegram)
+  --url-only         Print booking URL and exit (for sending via Telegram)
   --dry-run          Fill form but don't submit (Playwright mode)
   --script           Output Playwright JS code
+  --playwright-instructions  Output step-by-step Playwright MCP instructions for agent
 
 manage_booking.py:
   --list, -l         List all bookings (confirmed + cancelled)

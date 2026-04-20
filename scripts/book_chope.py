@@ -3,21 +3,28 @@
 Book a restaurant table on Chope via the booking widget.
 
 Uses the direct booking.chope.co widget URL (no login required — guest checkout).
-Requires Playwright MCP server for form submission.
+Guest contact details are loaded from references/guest.json.
+Playwright MCP is used for auto-fill and submission — NO CAPTCHA on guest checkout.
 
 Usage:
-  # Book with defaults from preferences.json
+  # Book with restaurant lookup (verifies availability first)
   python3 book_chope.py --restaurant nobu --date 2026-04-23 --time "7:00 pm" --pax 2
+
+  # Book using a pre-built booking URL (skips availability check)
+  python3 book_chope.py --url "https://booking.chope.co/widget/#/booking_check?..."
 
   # Book with special request
   python3 book_chope.py --restaurant nobu --date 2026-04-23 --time "7:00 pm" --pax 2 \
     --request "Window seat if possible"
 
-  # Dry run — show what would be booked without submitting
+  # Dry run — fill form but don't submit
   python3 book_chope.py --restaurant nobu --date 2026-04-23 --time "7:00 pm" --pax 2 --dry-run
 
-  # Output booking URL only (for manual completion)
+  # Output booking URL only (for manual completion via Telegram)
   python3 book_chope.py --restaurant nobu --date 2026-04-23 --time "7:00 pm" --pax 2 --url-only
+
+  # Output Playwright MCP instructions (for agent execution)
+  python3 book_chope.py --url "https://booking.chope.co/..." --playwright-instructions
 """
 
 import argparse
@@ -25,7 +32,7 @@ import json
 import sys
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlparse, parse_qs
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
 PREFS_PATH = SKILL_DIR / "references" / "preferences.json"
@@ -81,6 +88,101 @@ def format_date_for_booking(date_str: str) -> str:
     return dt.strftime("%-d %b %Y")
 
 
+def parse_booking_url(url: str) -> dict:
+    """Extract booking details from a Chope booking URL."""
+    # Handle hash fragment URLs (booking.chope.co/widget/#/booking_check?...)
+    if "#" in url:
+        fragment = url.split("#", 1)[1]
+        if "?" in fragment:
+            query_string = fragment.split("?", 1)[1]
+        else:
+            query_string = ""
+    else:
+        query_string = urlparse(url).query
+
+    params = parse_qs(query_string)
+    return {
+        "restaurant": params.get("name", params.get("GTM_RestaurantName", ["Unknown"]))[0],
+        "rid": params.get("rid", [""])[0],
+        "date": params.get("date", [""])[0],
+        "time": params.get("time", [""])[0],
+        "adults": int(params.get("adults", ["2"])[0]),
+        "children": int(params.get("children", ["0"])[0]),
+    }
+
+
+def generate_playwright_instructions(url: str, guest: dict, request: str = None,
+                                     dry_run: bool = False) -> str:
+    """
+    Generate step-by-step Playwright MCP instructions for the agent.
+
+    These are human-readable instructions that an agent with Playwright MCP
+    can follow using browser_navigate, browser_fill_form, browser_click, etc.
+    """
+    first_name = guest.get("first_name", "")
+    last_name = guest.get("last_name", "")
+    email = guest.get("email", "")
+    phone = guest.get("phone", "")
+
+    lines = [
+        "PLAYWRIGHT MCP INSTRUCTIONS — Complete Chope Booking",
+        "=" * 55,
+        "",
+        "Step 1: Navigate to the booking URL:",
+        f"  browser_navigate → {url}",
+        "",
+        "Step 2: Wait for the form to load (2-3 seconds), then take a snapshot:",
+        "  browser_snapshot",
+        "",
+        "Step 3: Fill the contact form using browser_fill_form:",
+        f'  First Name → "{first_name}"',
+        f'  Last Name → "{last_name}"',
+        f'  Email address → "{email}"',
+        f'  Mobile number → "{phone}"',
+    ]
+
+    if request:
+        lines.extend([
+            "",
+            "Step 4: Click 'Add' under 'Special requests' section:",
+            "  browser_click → the 'Add' text next to Special requests heading",
+            "",
+            "Step 5: Fill special request:",
+            f'  Enter your response → "{request}"',
+            "",
+            "Step 6: Check the restaurant policy checkbox (last checkbox on page):",
+            "  browser_click → 'I agree to the restaurant's reservations policy' checkbox",
+        ])
+        submit_step = 7
+    else:
+        lines.extend([
+            "",
+            "Step 4: Check the restaurant policy checkbox (last checkbox on page):",
+            "  browser_click → 'I agree to the restaurant's reservations policy' checkbox",
+        ])
+        submit_step = 5
+
+    if not dry_run:
+        lines.extend([
+            "",
+            f"Step {submit_step}: Click 'Book table' button to submit:",
+            "  browser_click → 'Book table' button",
+            "",
+            f"Step {submit_step + 1}: Wait 3 seconds, then snapshot to confirm success:",
+            "  browser_snapshot → look for confirmation message",
+            "",
+            "IMPORTANT: There is NO CAPTCHA on guest checkout. The form submits directly.",
+            "Guest details are pre-configured in references/guest.json.",
+        ])
+    else:
+        lines.extend([
+            "",
+            f"Step {submit_step}: DRY RUN — do NOT click 'Book table'. Take a snapshot to verify form is filled correctly.",
+        ])
+
+    return "\n".join(lines)
+
+
 def generate_playwright_script(url: str, guest: dict, request: str = None,
                                dry_run: bool = False) -> str:
     """
@@ -92,7 +194,6 @@ def generate_playwright_script(url: str, guest: dict, request: str = None,
     last_name = guest.get("last_name", "")
     email = guest.get("email", "")
     phone = guest.get("phone", "")
-    country_code = guest.get("country_code", "+65")
 
     steps = [
         f'// Navigate to booking widget',
@@ -135,18 +236,72 @@ def generate_playwright_script(url: str, guest: dict, request: str = None,
 
 def main():
     parser = argparse.ArgumentParser(description="Book a table on Chope")
-    parser.add_argument("--restaurant", "-r", required=True, help="Restaurant name or slug")
-    parser.add_argument("--date", "-d", required=True, help="Date (YYYY-MM-DD)")
-    parser.add_argument("--time", "-t", required=True, help="Time slot (e.g. '7:00 pm')")
+    parser.add_argument("--restaurant", "-r", help="Restaurant name or slug")
+    parser.add_argument("--date", "-d", help="Date (YYYY-MM-DD)")
+    parser.add_argument("--time", "-t", help="Time slot (e.g. '7:00 pm')")
     parser.add_argument("--pax", "-p", type=int, help="Number of guests")
     parser.add_argument("--children", type=int, default=0)
+    parser.add_argument("--url", help="Pre-built booking URL (skips availability check)")
     parser.add_argument("--request", help="Special request (e.g. 'Window seat')")
     parser.add_argument("--dry-run", action="store_true", help="Fill form but don't submit")
     parser.add_argument("--url-only", action="store_true", help="Print booking URL and exit")
-    parser.add_argument("--script", action="store_true", help="Output Playwright script")
+    parser.add_argument("--script", action="store_true", help="Output Playwright JS script")
+    parser.add_argument("--playwright-instructions", action="store_true",
+                        help="Output step-by-step Playwright MCP instructions for agent")
     args = parser.parse_args()
 
     prefs = load_prefs()
+    guest = load_guest_info()
+
+    # Mode 1: Pre-built URL — skip availability check, go straight to booking
+    if args.url:
+        info = parse_booking_url(args.url)
+        url = args.url
+
+        if not guest.get("first_name"):
+            print("Guest info not configured. Create references/guest.json")
+            print(f"\nBooking URL (complete manually): {url}")
+            sys.exit(1)
+
+        print(f"\nBooking Summary (from URL)")
+        print(f"{'=' * 50}")
+        print(f"Restaurant: {info['restaurant']}")
+        print(f"Date:       {info['date']}")
+        print(f"Time:       {info['time']}")
+        children = info['children']
+        kids_str = f", {children} children" if children else ""
+        print(f"Guests:     {info['adults']} adults{kids_str}")
+        print(f"Name:       {guest['first_name']} {guest['last_name']}")
+        print(f"Email:      {guest['email']}")
+        print(f"Phone:      {guest.get('country_code', '+65')} {guest['phone']}")
+        if args.request:
+            print(f"Request:    {args.request}")
+        print(f"{'=' * 50}")
+        print(f"\nBooking URL: {url}")
+
+        if args.playwright_instructions:
+            print(f"\n{generate_playwright_instructions(url, guest, args.request, args.dry_run)}")
+        elif args.script:
+            script = generate_playwright_script(url, guest, args.request, args.dry_run)
+            print(f"\n// Playwright script:")
+            print(script)
+        else:
+            script = generate_playwright_script(url, guest, args.request, args.dry_run)
+            script_path = Path("/tmp/chope_book.js")
+            wrapped = f"async (page) => {{\n{script}\n  return await page.title();\n}}"
+            script_path.write_text(wrapped)
+            print(f"\nPlaywright script saved to: {script_path}")
+            print(f"Execute via Playwright MCP or manually open the URL above.")
+
+        return
+
+    # Mode 2: Restaurant lookup — verify availability, build URL
+    if not args.restaurant:
+        parser.error("Either --restaurant or --url is required")
+
+    if not args.date or not args.time:
+        parser.error("--date and --time are required when using --restaurant")
+
     base_url = prefs["base_url"]
     pax = args.pax or prefs["default_pax"]
 
@@ -187,7 +342,6 @@ def main():
         sys.exit(0)
 
     # Load guest info
-    guest = load_guest_info()
     if not guest.get("first_name"):
         print("Guest info not configured. Create references/guest.json with:")
         print(json.dumps({
@@ -215,20 +369,19 @@ def main():
     print(f"{'=' * 50}")
     print(f"\nBooking URL: {url}")
 
-    # Generate Playwright script
-    script = generate_playwright_script(url, guest, args.request, args.dry_run)
-
-    if args.script:
+    # Generate output
+    if args.playwright_instructions:
+        print(f"\n{generate_playwright_instructions(url, guest, args.request, args.dry_run)}")
+    elif args.script:
         print(f"\n// Playwright script:")
-        print(script)
+        print(generate_playwright_script(url, guest, args.request, args.dry_run))
     else:
-        # Write script to temp file for Playwright MCP execution
+        script = generate_playwright_script(url, guest, args.request, args.dry_run)
         script_path = Path("/tmp/chope_book.js")
-        # Wrap in async function for Playwright MCP
         wrapped = f"async (page) => {{\n{script}\n  return await page.title();\n}}"
         script_path.write_text(wrapped)
         print(f"\nPlaywright script saved to: {script_path}")
-        print(f"Execute via Playwright MCP browser_run_code or manually open the URL above.")
+        print(f"Execute via Playwright MCP or manually open the URL above.")
 
 
 if __name__ == "__main__":
