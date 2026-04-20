@@ -37,5 +37,16 @@
     "rid": "irodori2506sg",
     "slug": "irodori-restaurant",
     "platform": "chope"
+  },
+  "the-coconut-club": {
+    "rid": "thecoconutclub2008sg",
+    "name": "The Coconut Club Siglap",
+    "slug": "the-coconut-club-siglap",
+    "platform": "chope"
+  },
+  "the-coconut-club-siglap": {
+    "rid": "thecoconutclub2008sg",
+    "slug": "the-coconut-club-siglap",
+    "platform": "chope"
   }
 }
