@@ -1,0 +1,41 @@
+{
+  "_comment": "Auto-populated venue cache. Key = search-friendly name, value = Chope restaurant ID and metadata.",
+  "nobu": {
+    "rid": "nobu2212sg",
+    "name": "Nobu Singapore",
+    "slug": "nobu",
+    "cuisine": "Fusion, Japanese, Seafood, Peruvian",
+    "location": "Orchard",
+    "price": "$$$$$",
+    "platform": "chope"
+  },
+  "burnt-ends": {
+    "rid": null,
+    "name": "Burnt Ends",
+    "slug": "burnt-ends",
+    "cuisine": "BBQ, Australian, Steakhouse",
+    "location": "Dempsey",
+    "price": "$$$$$",
+    "platform": "chope",
+    "note": "Not accepting reservations on Chope — call directly: 6224 3933"
+  },
+  "nami-korean": {
+    "rid": null,
+    "name": "Nami Korean Grill House by Hanjip",
+    "slug": "nami-korean-grill-house-by-hanjip",
+    "cuisine": "Korean",
+    "platform": "chope"
+  },
+  "dancing-crab-vivocity": {
+    "rid": "dancingcrabvivocity1509dcv",
+    "name": "Dancing Crab (Vivocity)",
+    "slug": "dancing-crab-vivocity",
+    "cuisine": "Cajun Seafood",
+    "platform": "chope"
+  },
+  "irodori-restaurant": {
+    "rid": "irodori2506sg",
+    "slug": "irodori-restaurant",
+    "platform": "chope"
+  }
+}
