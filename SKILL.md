@@ -76,7 +76,12 @@ The link opens the form pre-filled with date/time/pax. Nigel fills name, email, 
 
 **You CAN do this.** There is NO CAPTCHA on Chope guest checkout. Guest contact details are pre-configured in `references/guest.json`. Delegate to Claude Cowork to auto-fill and submit using Playwright.
 
-**How to delegate — send this to Cowork:**
+**How to delegate — send this to Cowork using an INTERACTIVE session (NOT isolated/background):**
+
+**CRITICAL: Do NOT use `sessionTarget: "isolated"` or run as a background task.**
+Playwright MCP requires tool permission approval, which only works in interactive mode.
+Use `sessionTarget: "main"` or the default interactive session when delegating.
+
 ```
 Complete this Chope booking using Playwright MCP.
 
@@ -102,6 +107,9 @@ Then follow the output instructions with Playwright MCP.
 ```
 
 **NEVER say "I can't complete the booking" or mention CAPTCHA.** Guest checkout has no CAPTCHA. If Playwright MCP is unavailable, THEN fall back to sending the link.
+
+**If you get "Permission prompt unavailable in non-interactive mode":**
+You launched Cowork in isolated/background mode. Re-run the delegation in an interactive session instead.
 
 ### 6. Cancel a Booking
 
